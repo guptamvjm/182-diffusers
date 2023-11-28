@@ -9,6 +9,8 @@
 # Reminder: run: python3 retrieve.py --class_prompt cat --class_data_dir real_reg/samples_cat --num_class_images 200
 # if finetuning on a new class
 
+#EXAMPLE: bash learn.sh person \<guptamvjm\> guptamvjm-experiment guptamvjm "at the beach"
+
 
 
 class=$1
@@ -28,7 +30,7 @@ accelerate launch train_custom_diffusion.py \
   --output_dir=$OUTPUT_DIR \
   --class_data_dir=./real_reg/samples_$class/ \
   --with_prior_preservation --real_prior --prior_loss_weight=1.0 \
-  --class_prompt=$class --num_class_images=200 \
+  --class_prompt=$class --num_class_images=150 \
   --instance_prompt="photo of a $token $class"  \
   --resolution=512  \
   --train_batch_size=1  \
@@ -36,7 +38,8 @@ accelerate launch train_custom_diffusion.py \
   --lr_warmup_steps=0 \
   --max_train_steps=800 \
   --scale_lr --hflip  \
+  --no_safe_serialization \
   --modifier_token "$token" \
   --validation_prompt="$token $class $prompt" \
-  --report_to="wandb" \
-  --no_safe_serialization
+  --report_to="wandb"
+
