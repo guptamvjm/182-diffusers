@@ -371,7 +371,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--num_validation_images",
         type=int,
-        default=2,
+        default=4,
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
     parser.add_argument(
@@ -1120,6 +1120,8 @@ def main(args):
 
                 # Predict the noise residual
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                # print(type(model_pred))
+                # print(model_pred.shape)
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":

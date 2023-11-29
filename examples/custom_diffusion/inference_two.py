@@ -2,7 +2,7 @@ import torch
 from diffusers import DiffusionPipeline
 import os
 
-save_path_name = "gupta_nima_experiment"
+save_path_name = "gupta_nima_experiment_2"
 token_name = "<nimsi>_<guptamvjm>"
 class_name = "person"
 
@@ -16,14 +16,13 @@ pipe.unet.load_attn_procs(
 pipe.load_textual_inversion(save_path_name, weight_name=f"<nimsi>.bin")
 pipe.load_textual_inversion(save_path_name, weight_name=f"<guptamvjm>.bin")
 generator = torch.Generator(device=pipe.device).manual_seed(1000)
-image = pipe(
-    f"<nimsi> person teaching <guptamvjm> person about math",
-    num_inference_steps=50,
-    eta=1.0,
-).images
-if not os.path.exists(token_name):
-    os.mkdir(token_name)
-i = 0
-for img in image:
-    img.save(f"{token_name}/{token_name}{i}.png")
-    i += 1
+for j in range(3):
+    image = pipe(
+        # f"<nimsi> person and <guptamvjm> person standing next to a basketball hoop",
+        f"<nimsi> person in a watercolor painting",
+        num_inference_steps=50,
+        eta=1.0,
+    ).images[0]
+    if not os.path.exists(token_name):
+        os.mkdir(token_name)
+    image.save(f"{token_name}/{token_name}{j}.png")

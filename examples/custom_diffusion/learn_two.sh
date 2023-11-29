@@ -11,11 +11,12 @@ accelerate launch train_custom_diffusion.py \
   --num_class_images=150 \
   --resolution=512  \
   --train_batch_size=1  \
-  --learning_rate=1e-5  \
+  --learning_rate=5e-6  \
   --lr_warmup_steps=0 \
-  --max_train_steps=800 \
+  --max_train_steps=1600 \
+  --freeze_model crossattn \
   --scale_lr --hflip  \
   --no_safe_serialization \
   --modifier_token "<nimsi>+<guptamvjm>" \
-  --validation_prompt="<nimsi> and <guptamvjm> standing on a beach" \
-  --report_to="wandb"
+  --validation_prompt="<nimsi> person and <guptamvjm> person eating lunch together" \
+  --report_to="wandb" \

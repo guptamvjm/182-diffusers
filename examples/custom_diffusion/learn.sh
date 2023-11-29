@@ -30,7 +30,7 @@ accelerate launch train_custom_diffusion.py \
   --output_dir=$OUTPUT_DIR \
   --class_data_dir=./real_reg/samples_$class/ \
   --with_prior_preservation --real_prior --prior_loss_weight=1.0 \
-  --class_prompt=$class --num_class_images=150 \
+  --class_prompt=$class --num_class_images=200 \
   --instance_prompt="photo of a $token $class"  \
   --resolution=512  \
   --train_batch_size=1  \
