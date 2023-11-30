@@ -1,3 +1,9 @@
+# HELLO 182 REVIEWERS
+
+To run our code, simply run `bash learn_two.sh`. This will require significant compute. On the other hand, to generate results, simpy run `python3 inference_two.py`. You can change the prompt inside of this file as well.
+
+The following README is the original repo README.
+
 # Custom Diffusion training example 
 
 [Custom Diffusion](https://arxiv.org/abs/2212.04488) is a method to customize text-to-image models like Stable Diffusion given just a few (4~5) images of a subject.

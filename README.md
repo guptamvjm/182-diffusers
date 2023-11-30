@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 -->
-
+<!-- 
 <p align="center">
     <br>
     <img src="https://raw.githubusercontent.com/huggingface/diffusers/main/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
@@ -35,7 +35,13 @@ limitations under the License.
     <a href="https://twitter.com/diffuserslib">
         <img alt="X account" src="https://img.shields.io/twitter/url/https/twitter.com/diffuserslib.svg?style=social&label=Follow%20%40diffuserslib">
     </a>
-</p>
+</p> -->
+
+
+# HELLO 182 REVIEWERS!
+Our repo is a fork of the diffusers library. We implemented finetuning using custom diffusion. Our work can be seen in examples/custom_diffusion. Please note we do not take credit for most of the work there; The majority of our work comes in scripts to streamline training, our data, and our analysis. Running our work will require significant GPUs.
+
+# ORIGINAL README
 
 🤗 Diffusers is the go-to library for state-of-the-art pretrained diffusion models for generating images, audio, and even 3D structures of molecules. Whether you're looking for a simple inference solution or training your own diffusion models, 🤗 Diffusers is a modular toolbox that supports both. Our library is designed with a focus on [usability over performance](https://huggingface.co/docs/diffusers/conceptual/philosophy#usability-over-performance), [simple over easy](https://huggingface.co/docs/diffusers/conceptual/philosophy#simple-over-easy), and [customizability over abstractions](https://huggingface.co/docs/diffusers/conceptual/philosophy#tweakable-contributorfriendly-over-abstraction).
 
