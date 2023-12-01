@@ -1,6 +1,9 @@
 # HELLO 182 REVIEWERS
 
-To run our code, simply run `bash learn_two.sh`. This will require significant compute. On the other hand, to generate results, simpy run `python3 inference_two.py`. You can change the prompt inside of this file as well.
+To run our code, simply run `bash learn_two.sh`. This will require significant compute. You will also need to sign into your huggingface on the CLI and into wandb (weights and biases) on the CLI.
+
+On the other hand, to generate results, first download our weights from Google Drive, at this link: https://drive.google.com/drive/folders/1XE84qzNvymLYvEW_NSRcSFCzsEYSJE40?usp=sharing. Then, put that folder into 182_diffusers/examples/custom_diffusion.
+Then, run `python3 inference_two.py`. You can change the prompt inside of this file as well.
 
 The following README is the original repo README.
 
