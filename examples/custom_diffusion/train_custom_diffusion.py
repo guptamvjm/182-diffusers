@@ -60,6 +60,8 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+import matplotlib.pyplot as plt
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.24.0.dev0")
@@ -179,6 +181,7 @@ class CustomDiffusionDataset(Dataset):
         num_class_images=200,
         hflip=False,
         aug=True,
+        valid=False
     ):
         self.size = size
         self.mask_size = mask_size
@@ -189,14 +192,19 @@ class CustomDiffusionDataset(Dataset):
 
         self.instance_images_path = []
         self.class_images_path = []
-        self.with_prior_preservation = with_prior_preservation
+        self.with_prior_preservation = with_prior_preservation and not valid
         for concept in concepts_list:
-            inst_img_path = [
-                (x, concept["instance_prompt"]) for x in Path(concept["instance_data_dir"]).iterdir() if x.is_file()
-            ]
+            if not valid:
+                inst_img_path = [
+                    (x, concept["instance_prompt"]) for x in Path(concept["instance_data_dir"]).iterdir() if x.is_file()
+                ]
+            else:
+                inst_img_path = [
+                    (x, concept["instance_prompt"]) for x in Path(concept["valid_data_dir"]).iterdir() if x.is_file()
+                ]
             self.instance_images_path.extend(inst_img_path)
 
-            if with_prior_preservation:
+            if self.with_prior_preservation:
                 class_data_root = Path(concept["class_data_dir"])
                 if os.path.isdir(class_data_root):
                     class_images_path = list(class_data_root.iterdir())
@@ -647,6 +655,7 @@ def parse_args(input_args=None):
 
 
 def main(args):
+    # validation_accuracies = [] TODO
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -1006,11 +1015,36 @@ def main(args):
         aug=not args.noaug,
     )
 
+    valid_dataset = CustomDiffusionDataset(
+        concepts_list=args.concepts_list,
+        tokenizer=tokenizer,
+        with_prior_preservation=args.with_prior_preservation,
+        size=args.resolution,
+        mask_size=vae.encode(
+            torch.randn(1, 3, args.resolution, args.resolution).to(dtype=weight_dtype).to(accelerator.device)
+        )
+        .latent_dist.sample()
+        .size()[-1],
+        center_crop=args.center_crop,
+        num_class_images=args.num_class_images,
+        hflip=args.hflip,
+        aug=not args.noaug,
+        valid=True
+    )
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.train_batch_size,
         shuffle=True,
         collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
+        num_workers=args.dataloader_num_workers,
+    )
+
+    valid_dataloader = torch.utils.data.DataLoader(
+        valid_dataset,
+        batch_size=1,
+        shuffle=True,
+        collate_fn=lambda examples: collate_fn(examples, False),
         num_workers=args.dataloader_num_workers,
     )
 
@@ -1030,12 +1064,12 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.modifier_token is not None:
-        custom_diffusion_layers, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            custom_diffusion_layers, text_encoder, optimizer, train_dataloader, lr_scheduler
+        custom_diffusion_layers, text_encoder, optimizer, train_dataloader, lr_scheduler, valid_dataloader = accelerator.prepare(
+            custom_diffusion_layers, text_encoder, optimizer, train_dataloader, lr_scheduler, valid_dataloader
         )
     else:
-        custom_diffusion_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            custom_diffusion_layers, optimizer, train_dataloader, lr_scheduler
+        custom_diffusion_layers, optimizer, train_dataloader, lr_scheduler, valid_dataloader = accelerator.prepare(
+            custom_diffusion_layers, optimizer, train_dataloader, lr_scheduler, valid_dataloader
         )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -1178,10 +1212,70 @@ def main(args):
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
+            
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
+                # valid_loss = 0
+                valid = True
+                for step, v_batch in enumerate(valid_dataloader):
+                    # Convert images to latent space
+                    latents = vae.encode(v_batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
+                    latents = latents * vae.config.scaling_factor
+
+                    # Sample noise that we'll add to the latents
+                    noise = torch.randn_like(latents)
+                    bsz = latents.shape[0]
+                    # Sample a random timestep for each image
+                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                    timesteps = timesteps.long()
+
+                    # Add noise to the latents according to the noise magnitude at each timestep
+                    # (this is the forward diffusion process)
+                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
+                    # Get the text embedding for conditioning
+                    encoder_hidden_states = text_encoder(v_batch["input_ids"])[0]
+
+                    # Predict the noise residual
+                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                    # print(type(model_pred))
+                    # print(model_pred.shape)
+
+                    # Get the target for loss depending on the prediction type
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        target = noise
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                    else:
+                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                    if args.with_prior_preservation and not valid:
+                        # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
+                        model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
+                        target, target_prior = torch.chunk(target, 2, dim=0)
+                        mask = torch.chunk(v_batch["mask"], 2, dim=0)[0]
+                        # Compute instance loss
+                        v_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        v_loss = ((v_loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
+
+                        # Compute prior loss
+                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+
+                        # Add the prior loss to the instance loss.
+                        v_loss = v_loss + args.prior_loss_weight * prior_loss
+                    else:
+                        mask = v_batch["mask"]
+                        v_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        v_loss = ((v_loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
+                    # Zero out the gradients for all token embeddings except the newly added
+                    # embeddings for the concept, as we only want to optimize the concept embeddings
+                    # valid_loss += v_loss.detach().item()
+                    optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+
+                
+
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
@@ -1209,7 +1303,7 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"v_loss": v_loss.detach().item(), "loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -1245,7 +1339,9 @@ def main(args):
                         ]
                         for _ in range(args.num_validation_images)
                     ]
-
+                    # TODO
+                    # valid_accuracy = ACCURACY_MEASURE(images)
+                    # validation_accuracies.append((global_step, valid_accuracy))
                     for tracker in accelerator.trackers:
                         if tracker.name == "tensorboard":
                             np_images = np.stack([np.asarray(img) for img in images])
@@ -1333,6 +1429,15 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+        
+        # steps = [a[0] for a in validation_accuracies]
+        # accs = [a[1] for a in validation_accuracies]
+
+        # plt.xlabel('Training Step Number')
+        # plt.ylabel('Validation Accuracy')
+        # plt.title('Validation Accuracies vs. Train Step')
+        # plt.plot(steps, accs)
+        # plt.savefig("valid_acc.png")
 
     accelerator.end_training()
 
