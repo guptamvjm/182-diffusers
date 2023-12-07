@@ -1,9 +1,15 @@
 # HELLO 182 REVIEWERS
 
-To run our code, simply run `bash learn_two.sh`. This will require significant compute. You will also need to sign into your huggingface on the CLI and into wandb (weights and biases) on the CLI.
+Some environment setup is necessary. Skip this section and come back to it once the environment is set up.
 
-On the other hand, to generate results, first download our weights from Google Drive, at this link: https://drive.google.com/drive/folders/1XE84qzNvymLYvEW_NSRcSFCzsEYSJE40?usp=sharing. Then, put that folder into 182_diffusers/examples/custom_diffusion.
-Then, run `python3 inference_two.py`. You can change the prompt inside of this file as well.
+To run our code for training on two people, simply run `bash learn_two.sh [OUTPUT_DIRECTORY]`. This will require significant compute. You will also need to sign into your huggingface on the CLI and into wandb (weights and biases) on the CLI.
+For our experiment for tuning on one person, run `bash learn_one.sh [OUTPUT_DIRECTORY] [PERSON]`, where person is either "nimsi" or "guptamvjm"
+The runtime for this can be reduced by taking out the "--validation_curves" argument within that file. Obviously, this will not keep track of validation curves. 
+
+Inside these files, it is easy to change learning rate, and the dataset used can be changed with the appropriate `concepts_list.json` file.
+
+On the other hand, to generate results, first download our weights from Google Drive, at this link: https://drive.google.com/drive/folders/1sMg-F0tBb9aH42uy-SqpThjPo2bfPRzY?usp=sharing. Then, put that folder into 182_diffusers/examples/custom_diffusion.
+Then, run `python3 inference_two.py`. You can change the prompt inside of this file as well. This will generate 10 images according to the prompt specified.
 
 The following README is the original repo README.
 

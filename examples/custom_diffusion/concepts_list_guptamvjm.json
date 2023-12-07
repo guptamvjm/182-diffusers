@@ -1,0 +1,9 @@
+[
+    {
+        "instance_prompt":     "photo of a <guptamvjm> person",
+        "class_prompt":         "person",
+        "instance_data_dir":    "./data/guptamvjm",
+        "valid_data_dir":    "./data/guptamvjm_valid",
+        "class_data_dir":       "./real_reg/samples_person"
+    }
+]

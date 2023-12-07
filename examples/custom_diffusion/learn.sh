@@ -13,11 +13,8 @@
 
 
 
-class=$1
-token=$2
-output_dir=$3
-instance_data_folder=$4
 prompt=$5
+output_dir=$1
 
 
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"

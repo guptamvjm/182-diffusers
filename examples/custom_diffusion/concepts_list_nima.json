@@ -1,0 +1,9 @@
+[
+    {
+        "instance_prompt":     "photo of a <nimsi> person",
+        "class_prompt":         "person",
+        "instance_data_dir":    "./data/nimsi",
+        "valid_data_dir":    "./data/nimsi_valid",
+        "class_data_dir":       "./real_reg/samples_person"
+    }
+]

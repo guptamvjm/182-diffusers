@@ -629,6 +629,12 @@ def parse_args(input_args=None):
         help="If specified save the checkpoint not in `safetensors` format, but in original PyTorch format instead.",
     )
 
+    parser.add_argument(
+        "--validation_curves",
+        action="store_true",
+        help="If specified, generates validation loss and curves",
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -1127,7 +1133,7 @@ def main(args):
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
-
+    use_validation = args.validation_curves
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         if args.modifier_token is not None:
@@ -1218,65 +1224,66 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
                 # valid_loss = 0
-                valid = True
-                for step, v_batch in enumerate(valid_dataloader):
-                    # Convert images to latent space
-                    latents = vae.encode(v_batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                    latents = latents * vae.config.scaling_factor
+                valid = use_validation
+                if valid:
+                    for step, v_batch in enumerate(valid_dataloader):
+                        # Convert images to latent space
+                        latents = vae.encode(v_batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
+                        latents = latents * vae.config.scaling_factor
 
-                    # Sample noise that we'll add to the latents
-                    noise = torch.randn_like(latents)
-                    bsz = latents.shape[0]
-                    # Sample a random timestep for each image
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                    timesteps = timesteps.long()
+                        # Sample noise that we'll add to the latents
+                        noise = torch.randn_like(latents)
+                        bsz = latents.shape[0]
+                        # Sample a random timestep for each image
+                        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                        timesteps = timesteps.long()
 
-                    # Add noise to the latents according to the noise magnitude at each timestep
-                    # (this is the forward diffusion process)
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                        # Add noise to the latents according to the noise magnitude at each timestep
+                        # (this is the forward diffusion process)
+                        noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                    # Get the text embedding for conditioning
-                    encoder_hidden_states = text_encoder(v_batch["input_ids"])[0]
+                        # Get the text embedding for conditioning
+                        encoder_hidden_states = text_encoder(v_batch["input_ids"])[0]
 
-                    # Predict the noise residual
-                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                    # print(type(model_pred))
-                    # print(model_pred.shape)
+                        # Predict the noise residual
+                        model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                        # print(type(model_pred))
+                        # print(model_pred.shape)
 
-                    # Get the target for loss depending on the prediction type
-                    if noise_scheduler.config.prediction_type == "epsilon":
-                        target = noise
-                    elif noise_scheduler.config.prediction_type == "v_prediction":
-                        target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                    else:
-                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                        # Get the target for loss depending on the prediction type
+                        if noise_scheduler.config.prediction_type == "epsilon":
+                            target = noise
+                        elif noise_scheduler.config.prediction_type == "v_prediction":
+                            target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                        else:
+                            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                    if args.with_prior_preservation and not valid:
-                        # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
-                        model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
-                        target, target_prior = torch.chunk(target, 2, dim=0)
-                        mask = torch.chunk(v_batch["mask"], 2, dim=0)[0]
-                        # Compute instance loss
-                        v_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        v_loss = ((v_loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
+                        if args.with_prior_preservation and not valid:
+                            # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
+                            model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
+                            target, target_prior = torch.chunk(target, 2, dim=0)
+                            mask = torch.chunk(v_batch["mask"], 2, dim=0)[0]
+                            # Compute instance loss
+                            v_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                            v_loss = ((v_loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
 
-                        # Compute prior loss
-                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                            # Compute prior loss
+                            prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
-                        # Add the prior loss to the instance loss.
-                        v_loss = v_loss + args.prior_loss_weight * prior_loss
-                    else:
-                        mask = v_batch["mask"]
-                        v_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        v_loss = ((v_loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
-                    # Zero out the gradients for all token embeddings except the newly added
-                    # embeddings for the concept, as we only want to optimize the concept embeddings
-                    # valid_loss += v_loss.detach().item()
-                    optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                            # Add the prior loss to the instance loss.
+                            v_loss = v_loss + args.prior_loss_weight * prior_loss
+                        else:
+                            mask = v_batch["mask"]
+                            v_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                            v_loss = ((v_loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
+                        # Zero out the gradients for all token embeddings except the newly added
+                        # embeddings for the concept, as we only want to optimize the concept embeddings
+                        # valid_loss += v_loss.detach().item()
+                        optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                else:
+                    v_loss = 0.0
 
-                
-
-
+            
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
@@ -1302,8 +1309,11 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+            if use_validation:
+                logs = {"v_loss": v_loss.detach().item(), "loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            else:
+                logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
 
-            logs = {"v_loss": v_loss.detach().item(), "loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 

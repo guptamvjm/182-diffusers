@@ -1,0 +1,14 @@
+[
+    {
+        "instance_prompt":     "photo of a <nimsi> person",
+        "class_prompt":         "person",
+        "instance_data_dir":    "./data/nimsi_small",
+        "class_data_dir":       "./real_reg/samples_person"
+    },
+    {
+        "instance_prompt":     "photo of a <guptamvjm> person",
+        "class_prompt":         "person",
+        "instance_data_dir":    "./data/guptamvjm_small",
+        "class_data_dir":       "./real_reg/samples_person"
+    }
+]
